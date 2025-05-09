@@ -59,7 +59,7 @@ def train(label_files, train_split=0.8,
 
         avg_train_loss = np.mean(train_losses)
         print(f"Epoch: {epoch} | Train loss:{avg_train_loss:.4f}")
-        train_loss_history.append(avg_train_loss)
+        
         if epoch % log_interval == 0:
             print(f"Running validation for epoch {epoch}...")
             model.eval()
@@ -82,6 +82,7 @@ def train(label_files, train_split=0.8,
             acc = accuracy_score(val_targets, val_preds)
             print(f"Epoch {epoch} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
             print(f"Validation Accuracy is: {acc:.4f}")
+            train_loss_history.append(avg_train_loss)
             val_loss_history.append(avg_val_loss)
             val_acc_history.append(acc)
 
@@ -115,9 +116,10 @@ def train(label_files, train_split=0.8,
                     json.dump(config_dict, f, indent=2)
 
                 print("saved model and config file")
-                plot_learning_curves(train_loss_history, val_loss_history, 
-                                    val_acc_history, log_interval=log_interval,
-                                    save_dir="plots", filename_prefix=filename_prefix)
+    print("Training Completed!!")
+    plot_learning_curves(train_loss_history, val_loss_history, 
+                        val_acc_history, log_interval=log_interval,
+                        save_dir="plots", filename_prefix=filename_prefix)
 
 
    

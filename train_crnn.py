@@ -11,7 +11,7 @@ from torch.amp import GradScaler, autocast
 
 def train(label_files, train_split=0.8, 
           batch_size=32, n_workers=4, epochs=500, 
-          log_interval=50, lr=5e-4, model_name="mfcc-crnn",
+          log_interval=1, lr=5e-4, model_name="mfcc-crnn",
             save_dir="models/mfcc-crnn"):
     
     timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M")
@@ -36,6 +36,7 @@ def train(label_files, train_split=0.8,
     scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
     scaler = GradScaler()
     best_acc = 0.0
+
     # start traing 
     train_loss_history = []
     val_loss_history = []
@@ -58,64 +59,63 @@ def train(label_files, train_split=0.8,
             train_losses.append(loss.item())
 
         avg_train_loss = np.mean(train_losses)
+        train_loss_history.append(avg_train_loss)
         print(f"Epoch: {epoch} | Train loss:{avg_train_loss:.4f}")
         
-        if epoch % log_interval == 0:
-            print(f"Running validation for epoch {epoch}...")
-            model.eval()
-            val_losses = []
-            val_preds = []
-            val_targets = []
+        
+        model.eval()
+        val_losses = []
+        val_preds = []
+        val_targets = []
 
-            with torch.no_grad():
-                for x_val, y_val in val_loader:
-                    x_val, y_val = x_val.to(device), y_val.to(device)
-                    with autocast(device_type="cuda" if torch.cuda.is_available() else "cpu"):
-                        out_val = model(x_val)
-                        val_loss = criterion(out_val, y_val)
-                    val_losses.append(val_loss.item())
-                    preds = torch.argmax(out_val, dim=1)
-                    val_preds.extend(preds.cpu().numpy())
-                    val_targets.extend(y_val.cpu().numpy())
+        with torch.no_grad():
+            for x_val, y_val in val_loader:
+                x_val, y_val = x_val.to(device), y_val.to(device)
+                with autocast(device_type="cuda" if torch.cuda.is_available() else "cpu"):
+                    out_val = model(x_val)
+                    val_loss = criterion(out_val, y_val)
+                val_losses.append(val_loss.item())
+                preds = torch.argmax(out_val, dim=1)
+                val_preds.extend(preds.cpu().numpy())
+                val_targets.extend(y_val.cpu().numpy())
 
-            avg_val_loss = np.mean(val_losses)
-            acc = accuracy_score(val_targets, val_preds)
-            print(f"Epoch {epoch} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
-            print(f"Validation Accuracy is: {acc:.4f}")
-            train_loss_history.append(avg_train_loss)
-            val_loss_history.append(avg_val_loss)
-            val_acc_history.append(acc)
+        avg_val_loss = np.mean(val_losses)
+        acc = accuracy_score(val_targets, val_preds)
+        val_loss_history.append(avg_val_loss)
+        val_acc_history.append(acc)
 
-            scheduler.step(avg_val_loss)
+        print(f"Epoch {epoch} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+        
+        scheduler.step(avg_val_loss)
 
-            if acc > best_acc:
-                best_acc = acc
-                #save model
-                model_path = os.path.join(save_dir, f"{filename_prefix}.pt")
-                torch.save(model.state_dict(), model_path)
+        if acc > best_acc:
+            best_acc = acc
+            #save model
+            model_path = os.path.join(save_dir, f"{filename_prefix}.pt")
+            torch.save(model.state_dict(), model_path)
 
-                #save config 
-                config_dict={
-                    "model_name": model_name,
-                    "epochs": epochs,
-                    "current_epoch":epoch,
-                    "batch_size": train_loader.batch_size,
-                    "learning_rate": lr,
-                    "train_size": len(train_dataset),
-                    "val_size": len(val_dataset),
-                    "num_workers": train_loader.num_workers,
-                    "log_interval": log_interval, 
-                    "validation_accuracy":f"{acc:.4f}",
-                    "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
-                    "lr_scheduler": extract_scheduler_config(scheduler),
-                    "git_commit": get_git_commit()
-                }
+            #save config 
+            config_dict={
+                "model_name": model_name,
+                "epochs": epochs,
+                "current_epoch":epoch,
+                "batch_size": train_loader.batch_size,
+                "learning_rate": lr,
+                "train_size": len(train_dataset),
+                "val_size": len(val_dataset),
+                "num_workers": train_loader.num_workers,
+                "log_interval": log_interval, 
+                "validation_accuracy":f"{acc:.4f}",
+                "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+                "lr_scheduler": extract_scheduler_config(scheduler),
+                "git_commit": get_git_commit()
+            }
 
-                config_path = os.path.join(save_dir, f"{filename_prefix}.json")
-                with open(config_path, "w") as f:
-                    json.dump(config_dict, f, indent=2)
+            config_path = os.path.join(save_dir, f"{filename_prefix}.json")
+            with open(config_path, "w") as f:
+                json.dump(config_dict, f, indent=2)
 
-                print("saved model and config file")
+            print("saved model and config file")
     print("Training Completed!!")
     plot_learning_curves(train_loss_history, val_loss_history, 
                         val_acc_history, log_interval=log_interval,
